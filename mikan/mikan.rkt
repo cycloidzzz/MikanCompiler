@@ -44,57 +44,49 @@
         `(,op ,@(map (uniquify alist) exprs))])))
 
 ;;; Flatten pass
-;;; (return-value variables assignments)
-;;; cases for let-bindings:
-;;; `[,var ,(? fixnum?)]
-;;; `[,var ,(? symbol?)]
-;;; `[,var ,value]
-;;; (define-values (rval def-vars assigns) (recursive value))
-(define flatten
-  (λ (expr)
-    (match expr
-      [(? fixnum?) (values expr '() '())]
-      [(? symbol?) (values expr '() '())]
-      [`(let ([,var ,value]) ,body)
-        (define-values (rval rdef rassigns) (flatten value))
-        (define-values (rb-val rb-def rb-assigns) (flatten body))
-        (values rb-val
-                (append rdef `(,var) rb-def)
-                (append rassigns `((assign ,var ,rval)) rb-assigns))]
-      [`(+ ,value1 ,value2)
-        (define-values (rval1 rdef1 rassigns1) (flatten value1))
-        (define-values (rval2 rdef2 rassigns2) (flatten value2))
-        (define rval (gensym 'tmp))
-        (values rval
-                (append rdef1 `(,rval) rdef2)
-                (append rassigns1
-                        rassigns2
-                        `((assign ,rval (+ ,rval1 ,rval2)))))]
-      [`(- ,value1)
-        (define-values (rval1 rdef1 rassigns1) (flatten value1))
-        (define rval (gensym 'tmp))
-          (values rval
-                  (append rdef1 `(,rval))
-                  (append rassigns1 `((assign ,rval (- ,rval1)))))]
-      [`(program ,expr)
-        (define-values (rval rdef rassigns) (flatten expr))
-        `(program ,rdef
-                  ,@(append rassigns
-                          (list `(return ,rval))))])))
+(define (flatten need-atomic)
+  (λ (e)
+    (match e
+      [(? fixnum?) (values e '() '())]
+      [(? symbol?) (values e '() '())]
+      [`(let ([,var ,val]) ,body)
+        (define-values (new-val ss-val xs-val) ((flatten #f) val))
+        (define-values (new-body ss-body xs-body) ((flatten #t) body))
+        (values new-body
+                (cons var (append ss-val ss-body))
+                (append xs-val
+                        (list `(assign ,var ,new-val))
+                        xs-body))]
+      [`(program ,e)
+        (define-values (new-e ss xs) ((flatten #t) e))
+        `(program ,ss
+                  ,@(append xs (list `(return ,new-e))))]
+      [`(,op ,(app (flatten #t) new-es ss xs) ...)
+        (define apply-op `(,op ,@new-es))
+        (define op-ss (append* ss))
+        (define op-xs (append* xs))
+        (cond [need-atomic
+               (define tmp (gensym 'tmp))
+               (values tmp
+                       (cons tmp op-ss)
+                       (append op-xs
+                               (list `(assign ,tmp ,apply-op))))]
+              [else
+               (values apply-op op-ss op-xs)])]
+      [else
+       (error `flatten "expected valid R1-expressionm not ~a" e)])))
 
-;;; TODO (cycloidz): require some naive peephole optimization
-;;; to eliminate the redundant variable assignment.
 
 ;;; TODO (cycloidz): refactoring unittest with rackunit.
 (define flatten-test1 `(program
                           (+ 52 (- 10))))
-(define flatten-test1-result (flatten flatten-test1))
+(define flatten-test1-result ((flatten #t) flatten-test1))
 (displayln flatten-test1-result)
 
 (define flatten-test2 `(program
                         (let ([x (+ (- 10) 11)])
                           (+ x 41))))
-(define flatten-test2-result (flatten flatten-test2))
+(define flatten-test2-result ((flatten #t) flatten-test2))
 (displayln flatten-test2-result)
 
 
