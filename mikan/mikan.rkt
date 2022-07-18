@@ -9,8 +9,8 @@
     (define recursive (interpreter-R1 env))
     (match expr
       [(? symbol?) (lookup expr env)]
-      [`(let ([,vars ,(app recursive values)]...) ,body)
-        (define new-env (append (map cons vars values) env))
+      [`(let ([,vars ,(app recursive e)]...) ,body)
+        (define new-env (append (map cons vars e) env))
         ((interpreter-R1 new-env) body)]
       [(? fixnum?) expr]
       [`(read)
@@ -49,13 +49,17 @@
     (match e
       [(? fixnum?) (values e '() '())]
       [(? symbol?) (values e '() '())]
-      [`(let ([,var ,val]) ,body)
-        (define-values (new-val ss-val xs-val) ((flatten #f) val))
+      [`(let ([,vars ,(app (flatten #f) new-vals ss-vals xs-vals)]...) ,body)
         (define-values (new-body ss-body xs-body) ((flatten #t) body))
+        (define ss-bindings (append* ss-vals))
+        (define xs-bindings (append* xs-vals))
         (values new-body
-                (cons var (append ss-val ss-body))
-                (append xs-val
-                        (list `(assign ,var ,new-val))
+                (append vars ss-bindings ss-body)
+                (append xs-bindings
+                        (map
+                         (λ (var val)
+                           `(assign ,var ,val))
+                         vars new-vals)
                         xs-body))]
       [`(program ,e)
         (define-values (new-e ss xs) ((flatten #t) e))
@@ -89,6 +93,15 @@
 (define flatten-test2-result ((flatten #t) flatten-test2))
 (displayln flatten-test2-result)
 
+(displayln "Start of Test 3 : ****************************************")
+(define flatten-test3 `(program
+                        (let ([x 1919000]
+                              [y 810]
+                              [z 1145140000000])
+                              (+ z (+ x y)))))
+(define flatten-test3-result ((flatten #t) flatten-test3))
+(displayln flatten-test3-result)
+(displayln "End of Test 3 : *******************************************")
 
 (define text-test1
   `(program
