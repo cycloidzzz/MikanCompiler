@@ -1,3 +1,11 @@
+# VS code configurations
+.vscode
+.vscode/*
+
+# Output directory
+output
+output/*
+
 *.ss~
 *.ss#*
 .#*.ss
@@ -9,3 +17,7 @@
 *.rkt~
 *.rkt#*
 .#*.rkt
+
+# C runtime
+*.o
+*.a

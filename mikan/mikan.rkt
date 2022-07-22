@@ -162,6 +162,77 @@
       [else
        (error `assign-homes "invalid C0 instruction ~a" e)])))
 
+(define (memory-operand? e)
+  (match e
+    [`(deref ,reg ,loc) #t]
+    [else #f]))
+
+(define (patch-instructions)
+  (λ (e)
+    (match e
+      [`(movq (int ,n) ,dst) #:when (memory-operand? dst)
+                             `((movq (int ,n) (reg rax))
+                               (movq (reg rax) ,dst))]
+      [`(movq ,src ,dst)
+       (cond [(and (memory-operand? src) (memory-operand? dst))
+              `((movq ,src (reg rax))
+                (movq (reg rax) ,dst))]
+             [else `((movq ,src ,dst))])]
+      [`(callq ,f) `((call ,f))]
+      [`(,inst ,src ,dst)
+       (cond [(and (memory-operand? src) (memory-operand? dst))
+              `((movq ,src (reg rax))
+                (,inst (reg rax) ,dst))]
+             [else `((,inst ,src ,dst))])]
+      [`(,inst ,src) `((,inst ,src))]
+      [`(program ,stack-frame-size ,xs ...)
+       (let ([new-xs (append* (map (patch-instructions) xs))])
+         `(program ,stack-frame-size ,@new-xs))])))
+
+;; print x86-pass
+(define (emit-x86)
+  (λ (e)
+    (match e
+      [`(deref ,reg ,offset)
+       (format "~a(%~a)" offset reg)]
+      [`(int ,n)
+       (format "$~a" n)]
+      [`(reg ,r)
+       (format "%~a" r)]
+      [`(callq ,f)
+       (format "\tcallq\t~a" f)]
+      [`(program ,stack-frame-size ,xs ...)
+       (let ([new-xs (map (emit-x86) xs)])
+         (string-append
+          (format "\t.global ~a\n" "_main")
+          (format "\t_main:\n")
+          (format "\tpushq\t%rbp\n")
+          (format "\tsubq\t$~a, %rsp\n" (* 8 stack-frame-size))
+          (string-append* (map (emit-x86) xs))
+          (format "\tmovq\t%rax, %rdi\n")
+          (format "\tcallq\tprint_int\n")
+          (format "\taddq\t$~a, %rsp\n" (* 8 stack-frame-size))
+          (format "\tpopq\t%rbp\n")
+          (format "\tretq\n")))]
+      [`(,inst ,(app (emit-x86) src) ,(app (emit-x86) dst))
+       (format "\t~a\t~a, ~a\n" inst src dst)]
+      [`(,inst ,(app (emit-x86) src))
+       (format "\t~a\t~a\n" inst src)])))
+
+(define (compiler path)
+  (λ (e)
+    (letrec([unique-e ((uniquify '()) e)]
+            [flatten-e ((flatten #t) unique-e)]
+            [select-inst-e ((select-instructions) flatten-e)]
+            [assign-homes-e ((assign-homes '()) select-inst-e)]
+            [patch-inst-e ((patch-instructions) assign-homes-e)]
+            [emit-x86-e ((emit-x86) patch-inst-e)])
+      (with-output-to-file path
+        (λ ()
+          (display emit-x86-e))
+        #:mode 'binary
+        #:exists 'truncate))))
+
 
 (define text-test1
   `(program
@@ -187,16 +258,27 @@
 (define test1-uniquify-result ((uniquify '()) test1))
 (define test1-flatten-result ((flatten #t) test1-uniquify-result))
 (define test1-select-inst-result ((select-instructions) test1-flatten-result))
-(displayln test1-select-inst-result)
+(displayln test1-flatten-result)
 (define test1-assign-homes-result ((assign-homes '()) test1-select-inst-result))
-(displayln test1-assign-homes-result)
+(define test1-patch-inst-result ((patch-instructions) test1-assign-homes-result))
+(displayln test1-patch-inst-result)
+(define test1-x86-result ((emit-x86) test1-patch-inst-result))
+(displayln test1-x86-result)
 (displayln "End of Test 1 : *******************************************")
 
+(displayln "Start of Test 2 : *****************************************")
 (define flatten-test2 `(program
-                        (let ([x (+ (- 10) 11)])
-                          (+ x 41))))
-(define flatten-test2-result ((flatten #t) flatten-test2))
-(displayln flatten-test2-result)
+                        (let ([a 42])
+                          (let ([b a])
+                            b))))
+(define test2-flatten-result ((flatten #t) flatten-test2))
+(define test2-select-inst-result ((select-instructions) test2-flatten-result))
+(define test2-assign-homes-result ((assign-homes '()) test2-select-inst-result))
+(define test2-patch-inst-result ((patch-instructions) test2-assign-homes-result))
+(displayln test2-patch-inst-result)
+(define test2-compiler (compiler "./output/test2.S"))
+(test2-compiler flatten-test2)
+(displayln "End of Test 2 : *******************************************")
 
 (displayln "Start of Test 3 : ****************************************")
 (define flatten-test3 `(program
