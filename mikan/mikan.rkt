@@ -207,6 +207,7 @@
           (format "\t.global ~a\n" "_main")
           (format "\t_main:\n")
           (format "\tpushq\t%rbp\n")
+          (format "\tmovq\t%rsp, %rbp\n")
           (format "\tsubq\t$~a, %rsp\n" (* 8 stack-frame-size))
           (string-append* (map (emit-x86) xs))
           (format "\tmovq\t%rax, %rdi\n")
