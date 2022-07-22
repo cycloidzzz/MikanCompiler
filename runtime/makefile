@@ -1,0 +1,29 @@
+MIKAN_RUNTIME_DIR=$(shell pwd)
+MIKAN_RUNTIME_SRCS=$(wildcard *.c)
+MIKAN_RUNTIME_OBJS=$(patsubst %.c,%.o,$(MIKAN_RUNTIME_SRCS))
+MIKAN_INCLUDE_FLAGS=$(foreach dir,$(MIKAN_RUNTIME_DIR),-I$(dir))
+MIKAN_LINK_FLAGS=-L.
+MIKAN_RUNTIME_STATIC=libmikan.a
+
+MIKAN_TEST_DIR=example
+MIKAN_TEST_SRCS=$(wildcard $(MIKAN_TEST_DIR)/*.c)
+MIKAN_TEST_OBJS=$(patsubst %.c,%.o,$(MIKAN_TEST_SRCS))
+
+init:
+	@echo $(MIKAN_RUNTIME_OBJS)
+
+$(MIKAN_RUNTIME_STATIC):$(MIKAN_RUNTIME_OBJS)
+	@$(AR) rcs $@ $^
+
+$(MIKAN_TEST_DIR)/%.o:$(MIKAN_TEST_DIR)/%.c
+	@$(CC) $(CFLAGS) $(MIKAN_INCLUDE_FLAGS) $(MIKAN_LINK_FLAGS) -lmikan -o $@ $^
+
+.PHONY:all
+all:$(MIKAN_RUNTIME_STATIC) $(MIKAN_TEST_OBJS)
+
+.PHONY:clean
+clean:
+	@rm -f $(MIKAN_RUNTIME_OBJS)
+	@rm -f $(MIKAN_TEST_OBJS)
+	@rm -f $(MIKAN_RUNTIME_STATIC)
+
