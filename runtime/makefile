@@ -12,6 +12,9 @@ MIKAN_TEST_OBJS=$(patsubst %.c,%.o,$(MIKAN_TEST_SRCS))
 init:
 	@echo $(MIKAN_RUNTIME_OBJS)
 
+$(MIKAN_RUNTIME_OBJS):	%.o: %.c
+	@$(CC) -c -o $@ $^
+
 $(MIKAN_RUNTIME_STATIC):$(MIKAN_RUNTIME_OBJS)
 	@$(AR) rcs $@ $^
 
