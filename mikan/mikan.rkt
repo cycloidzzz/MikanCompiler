@@ -178,7 +178,7 @@
               `((movq ,src (reg rax))
                 (movq (reg rax) ,dst))]
              [else `((movq ,src ,dst))])]
-      [`(callq ,f) `((call ,f))]
+      [`(callq ,f) `((callq ,f))]
       [`(,inst ,src ,dst)
        (cond [(and (memory-operand? src) (memory-operand? dst))
               `((movq ,src (reg rax))
@@ -188,6 +188,11 @@
       [`(program ,stack-frame-size ,xs ...)
        (let ([new-xs (append* (map (patch-instructions) xs))])
          `(program ,stack-frame-size ,@new-xs))])))
+
+(define (round-up n k)
+  (let ([r (modulo n k)])
+    (cond [(= r 0) n]
+          [else (+ n (- k r))])))
 
 ;; print x86-pass
 (define (emit-x86)
@@ -200,19 +205,20 @@
       [`(reg ,r)
        (format "%~a" r)]
       [`(callq ,f)
-       (format "\tcallq\t~a" f)]
+       (format "\tcallq\t~a\n" (symbol->string f))]
       [`(program ,stack-frame-size ,xs ...)
-       (let ([new-xs (map (emit-x86) xs)])
+       (let ([new-xs (map (emit-x86) xs)]
+             [stack-frame (round-up (* 8 stack-frame-size) 16)])
          (string-append
           (format "\t.global ~a\n" "_main")
           (format "\t_main:\n")
           (format "\tpushq\t%rbp\n")
           (format "\tmovq\t%rsp, %rbp\n")
-          (format "\tsubq\t$~a, %rsp\n" (* 8 stack-frame-size))
+          (format "\tsubq\t$~a, %rsp\n" stack-frame)
           (string-append* (map (emit-x86) xs))
           (format "\tmovq\t%rax, %rdi\n")
           (format "\tcallq\tprint_int\n")
-          (format "\taddq\t$~a, %rsp\n" (* 8 stack-frame-size))
+          (format "\taddq\t$~a, %rsp\n" stack-frame)
           (format "\tpopq\t%rbp\n")
           (format "\tretq\n")))]
       [`(,inst ,(app (emit-x86) src) ,(app (emit-x86) dst))
@@ -281,14 +287,15 @@
 (test2-compiler flatten-test2)
 (displayln "End of Test 2 : *******************************************")
 
+;;; FIXME (cycloidz): the stack-frame should be 16 aligned.
 (displayln "Start of Test 3 : ****************************************")
 (define flatten-test3 `(program
-                        (let ([x 1919000]
-                              [y 810]
-                              [z 1145140000000])
+                        (let ([x (read)]
+                              [y (read)]
+                              [z (read)])
                           (+ z (+ x y)))))
-(define flatten-test3-result ((flatten #t) flatten-test3))
-(displayln flatten-test3-result)
+(define test3-compiler (compiler "./output/test3.S"))
+(test3-compiler flatten-test3)
 (displayln "End of Test 3 : *******************************************")
 
 (define select-instructions-test1
