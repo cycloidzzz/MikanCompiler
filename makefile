@@ -1,20 +1,20 @@
 MIKAN_OUTPUT_DIR=output
 MIKAN_OUTPUT_S_SRCS=$(wildcard $(MIKAN_OUTPUT_DIR)/*.S)
 MIKAN_OUTPUT_S_OBJS=$(patsubst %.S,%.o,$(MIKAN_OUTPUT_S_SRCS))
-MIKAN_RUNTIME_DIR=$(shell pwd)/runtime
+MIKAN_RUNTIME_DIR=runtime
 
-init:
-	@echo $(MIKAN_OUTPUT_S_OBJS)
+$(MIKAN_OUTPUT_S_OBJS): %.o: %.S
+	@$(CC) -o $@ $< -L$(MIKAN_RUNTIME_DIR) -lmikan
 
 .PHONY:support
 support:
 	@$(MAKE) -C $(MIKAN_RUNTIME_DIR) all
 
-$(MIKAN_OUTPUT_S_OBJS): %.o: %.S
-	@$(CC) -o $@ $< -L$(MIKAN_RUNTIME_DIR) -lmikan
+.PHONY:output
+output:$(MIKAN_OUTPUT_S_OBJS)
 
 .PHONY:all
-all:support $(MIKAN_OUTPUT_S_OBJS)
+all:support output
 
 .PHONY:clean
 clean:

@@ -8,4 +8,4 @@ int64_t read_int() {
 
 void print_int(int64_t number) { printf("%lld", number); }
 
-void print_int_ln(int64_t number) { printf("%lld\n", number); }
+void println_int(int64_t number) { printf("%lld\n", number); }

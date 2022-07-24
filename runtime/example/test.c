@@ -2,6 +2,6 @@
 
 int main() {
   int64_t number = read_int();
-  print_int_ln(number);
+  println_int(number);
   return 0;
 }

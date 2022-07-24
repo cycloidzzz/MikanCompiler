@@ -136,6 +136,8 @@
       [else
        (error `select-instructions "expect valid pseudo-x86 instruction, not ~a" e)])))
 
+;;; register allocation
+
 ;;; Assign homes pass
 (define (assign-homes homes)
   (define first-offset 8)
@@ -215,9 +217,9 @@
           (format "\tpushq\t%rbp\n")
           (format "\tmovq\t%rsp, %rbp\n")
           (format "\tsubq\t$~a, %rsp\n" stack-frame)
-          (string-append* (map (emit-x86) xs))
+          (string-append* new-xs)
           (format "\tmovq\t%rax, %rdi\n")
-          (format "\tcallq\tprint_int\n")
+          (format "\tcallq\tprintln_int\n")
           (format "\taddq\t$~a, %rsp\n" stack-frame)
           (format "\tpopq\t%rbp\n")
           (format "\tretq\n")))]
@@ -241,22 +243,38 @@
         #:exists 'truncate))))
 
 
+(define uncover-live-test1
+  `(program
+    (let([v 1])
+      (let([w 46])
+        (let([x (+ v 7)])
+          (let([y (+ 4 x)])
+            (let([z (+ x w)])
+              (+ z (- y)))))))))
+
+(define uncover-live-test1-result
+  (letrec([uniquify-e ((uniquify '()) uncover-live-test1)]
+          [flatten-e ((flatten #t) uniquify-e)]
+          [select-inst-e ((select-instructions) flatten-e)])
+    select-inst-e))
+(displayln "Start of Uncover Liveness Test 1 : ****************************************")
+(displayln uncover-live-test1-result)
+(displayln "End of Uncover Liveness Test 1 : ******************************************")
+
+;;; mikan compiler example
 (define text-test1
   `(program
-    (let [(x 1)
-          (y 1)]
-      (let [(x 2)
-            (y 2)]
-        (let [(y 1919000)
-              (x 810)
-              (z 1145140000000)]
+    (let ([x 1]
+          [y 1])
+      (let ([x 2]
+            [y 2])
+        (let ([y 1919000]
+              [x 810]
+              [z 1145140000000])
           (+ z
              (+ x y)))))))
-
-(displayln ((interpreter-R1 '()) text-test1))
-(define uniquify-test1 ((uniquify '()) text-test1))
-(displayln uniquify-test1)
-(displayln ((interpreter-R1 '()) uniquify-test1))
+;;;(define test1-compiler (compiler "./output/test1.S"))
+;;;(test1-compiler text-test1)
 
 ;;; TODO (cycloidz): refactoring unittest with rackunit.
 (displayln "Start of Test 1 : ****************************************")
@@ -283,8 +301,8 @@
 (define test2-assign-homes-result ((assign-homes '()) test2-select-inst-result))
 (define test2-patch-inst-result ((patch-instructions) test2-assign-homes-result))
 (displayln test2-patch-inst-result)
-(define test2-compiler (compiler "./output/test2.S"))
-(test2-compiler flatten-test2)
+;;;(define test2-compiler (compiler "./output/test2.S"))
+;;;(test2-compiler flatten-test2)
 (displayln "End of Test 2 : *******************************************")
 
 ;;; FIXME (cycloidz): the stack-frame should be 16 aligned.
@@ -294,8 +312,8 @@
                               [y (read)]
                               [z (read)])
                           (+ z (+ x y)))))
-(define test3-compiler (compiler "./output/test3.S"))
-(test3-compiler flatten-test3)
+;;;(define test3-compiler (compiler "./output/test3.S"))
+;;;(test3-compiler flatten-test3)
 (displayln "End of Test 3 : *******************************************")
 
 (define select-instructions-test1

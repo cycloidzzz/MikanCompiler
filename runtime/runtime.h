@@ -7,6 +7,6 @@
 
 extern int64_t read_int() __asm__("read_int");
 extern void print_int(int64_t number) __asm__("print_int");
-extern void print_int_ln(int64_t number) __asm__("print_int_ln");
+extern void println_int(int64_t number) __asm__("println_int");
 
 #endif  // ! MIKANCOMPILER_RUNTIME_RUNTIME_H
