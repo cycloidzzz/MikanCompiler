@@ -55,7 +55,7 @@
        (for ([x (filter (λ (e)
                           (not (or (eq? e src) (eq? e dst))))
                         (set->list live-after))])
-         (add-edge! g dst x)) g]
+         (add-edge! g dst x))]
       [`(movq ,src (var ,dst))
        (for ([x (filter (λ (e)
                           (not (eq? e dst)))
@@ -83,6 +83,51 @@
        (let ([g (unweighted-graph/undirected '())])
          (add-interference-helper g ss live-afters)
          `(program (,xs ,g) ,@ss))])))
+
+(define (allocate-regsiters)
+  (define (get-saturation v g assignment)
+    (cond [(hash-empty? assignment) 0]
+          [else
+           (letrec ([neighbors (get-neighbors g v)]
+                    [neighbor-colors (filter-map (λ (x)
+                                                   (and (hash-has-key? assignment x)
+                                                        (hash-ref assignment x)))
+                                                 neighbors)])
+             (length (set->list (list->set neighbor-colors))))]))
+  (define (get-unused-color-recursive unused-color colors)
+    (cond [(null? colors) unused-color]
+          [(< unused-color (car colors)) unused-color]
+          [(eq? unused-color (car colors))
+           (get-unused-color-recursive (+ unused-color 1) colors)]
+          [else
+           (get-unused-color-recursive unused-color (cdr colors))]))
+  (define (get-unused-color v g assignment)
+    (cond [(hash-empty? assignment) 0]
+          [else
+           (letrec ([neighbors (get-neighbors g v)]
+                    [neighbor-colors (sort
+                                      (filter-map (λ (x)
+                                                    (and (hash-has-key? assignment x)
+                                                         (hash-ref assignment x)))
+                                                  neighbors) <)])
+             (get-unused-color-recursive 0 neighbor-colors))]))
+  (define (get-max-saturation-v mv ms vs ss)
+    (cond [(null? vs) mv]
+          [else
+           (if (> (car ss) ms)
+               (get-max-saturation-v (car vs) (car ss) (cdr vs) (cdr ss))
+               (get-max-saturation-v mv ms (cdr vs) (cdr ss)))]))
+  (define (color-graph vs g assignment)
+    (cond [(null? vs) assignment]
+          [else
+           (letrec([ss (map (λ (v) (get-saturation v g assignment)) vs)]
+                   [cur-v (get-max-saturation-v 'zero -1 vs ss)]
+                   [cur-c (get-unused-color cur-v g assignment)])
+             (color-graph (remove cur-v vs) g (hash-set assignment cur-v  cur-c)))]))
+  (λ (e)
+    (match e
+      [`(program (,xs ,g) ,@ss)
+       (color-graph xs g (hash))])))
 
 (test-case
  "A simple test case"
@@ -113,7 +158,9 @@
     (check-true (has-edge? g 'x 'y))
     (check-true (has-edge? g 'y 'z))
     (check-true (has-edge? g 'z 't.1))
-    (check-true (has-edge? g 't.1 't.2))]))
+    (check-true (has-edge? g 't.1 't.2))])
+ (define allocate-registers-res ((allocate-regsiters) build-graph-res))
+ (displayln allocate-registers-res))
 
 (test-case
  "Liveness analysis with function calls."
