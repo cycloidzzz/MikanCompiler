@@ -48,7 +48,7 @@
        `(program (,xs ,(cdr live-afters)) ,@new-ss)])))
 
 (define (build-interference)
-  (define (add-interference g inst live-after)
+  (define (add-interference! g inst live-after)
     (displayln (format "inst: ~a, live-after: ~a" inst live-after))
     (match inst
       [`(movq (var ,src) (var ,dst))
@@ -68,20 +68,20 @@
          (add-edge! g dst x))]
       [`(call ,f) `()]
       [else `()]))
-  (define (add-interference-helper g ss live-afters)
+  (define (add-interference-recur! g ss live-afters)
     (cond [(null? live-afters)
            (if (null? ss)
                '()
                (error `add-interference-helper
                       "live-afters ~a and ss ~a doesn't match." live-afters ss))]
           [else
-           (add-interference g (car ss) (car live-afters))
-           (add-interference-helper g (cdr ss) (cdr live-afters))]))
+           (add-interference! g (car ss) (car live-afters))
+           (add-interference-recur! g (cdr ss) (cdr live-afters))]))
   (λ (e)
     (match e
       [`(program (,xs ,live-afters) ,ss ...)
        (let ([g (unweighted-graph/undirected '())])
-         (add-interference-helper g ss live-afters)
+         (add-interference-recur! g ss live-afters)
          `(program (,xs ,g) ,@ss))])))
 
 (define (allocate-regsiters)
