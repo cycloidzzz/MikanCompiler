@@ -84,6 +84,16 @@
          (add-interference-recur! g ss live-afters)
          `(program (,xs ,g) ,@ss))])))
 
+(define caller-saved-registers `(rax rdx rcx rsi rdi r8 r9 r10 r11))
+(define callee-saved-registers `(rsp rbp rbx r12 r13 r14 r15))
+(define x86-registers `(rax rdx rcx rsi rdi r8 r9 r10 r11 rbp rbx r12 r13 r14 r15))
+(define x86-allocatable-registers `(rbx rcx rdx rsi rdi r8 r9 r10 r11 r12 r13 r14 r15))
+(define (get-location color)
+  (if (< color (length x86-allocatable-registers))
+      `(reg ,(list-ref x86-allocatable-registers color))
+      `(deref rbp ,(- (+ 8 (* 8 color))))))
+
+;;; TODO: (cycloidz) stack slot allocation.
 (define (allocate-regsiters)
   (define (get-saturation v g assignment)
     (cond [(hash-empty? assignment) 0]
@@ -124,10 +134,22 @@
                    [cur-v (get-max-saturation-v 'zero -1 vs ss)]
                    [cur-c (get-unused-color cur-v g assignment)])
              (color-graph (remove cur-v vs) g (hash-set assignment cur-v  cur-c)))]))
+  (define (assign-homes color-assign)
+    (λ (e)
+      (match e
+        [`(int ,n) e]
+        [`(reg ,r) e]
+        [`(var ,x) (get-location (hash-ref color-assign x))]
+        [`(callq ,f) e]
+        [`(,inst-op  ,(app (assign-homes color-assign) xs) ...)
+         `(,inst-op ,@xs)])))
   (λ (e)
     (match e
-      [`(program (,xs ,g) ,@ss)
-       (color-graph xs g (hash))])))
+      [`(program (,xs ,g) ,ss ...)
+       (letrec([color-assign (color-graph xs g (hash))]
+               [new-ss (map (assign-homes color-assign) ss)])
+         (displayln color-assign)
+         `(program (,xs ,g) ,@new-ss))])))
 
 (test-case
  "A simple test case"
