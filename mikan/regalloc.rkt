@@ -14,14 +14,14 @@
                      [`(var ,x) #t]
                      [else #f]))
                  xs)))
-  (define (calculate-read-variables inst)
+  (define (calculate-gens inst)
     (match inst
       [`(callq ,f) '()]
       [`(addq ,xs ...) (calculate-variables xs)]
       [`(,inst-name (var ,src) ,dst) `(,src)]
       [`(,inst-name (var ,src)) `(,src)]
       [else '()]))
-  (define (calculate-write-variables inst)
+  (define (calculate-kills inst)
     (match inst
       [`(callq ,f) '()]
       [`(,inst-name ,src (var ,dst)) `(,dst)]
@@ -33,11 +33,11 @@
            (define-values (live-afters rest-ss) (collect-liveness live-after (cdr ss)))
            (letrec([curs (car ss)]
                    [cur-live-after (car live-afters)]
-                   [cur-rx (calculate-read-variables curs)]
-                   [cur-wx (calculate-write-variables curs)]
+                   [cur-gens (calculate-gens curs)]
+                   [cur-kills (calculate-kills curs)]
                    [live-before (set-union (set-subtract cur-live-after
-                                                         (list->set cur-wx))
-                                           (list->set cur-rx))])
+                                                         (list->set cur-kills))
+                                           (list->set cur-gens))])
              (values (cons live-before
                            live-afters)
                      (cons curs rest-ss)))]))
@@ -47,6 +47,10 @@
        (define-values (live-afters new-ss) (collect-liveness (set) ss))
        `(program (,xs ,(cdr live-afters)) ,@new-ss)])))
 
+(define caller-saved-registers `(rax rdx rcx rsi rdi r8 r9 r10 r11))
+(define callee-saved-registers `(rsp rbp rbx r12 r13 r14 r15))
+(define x86-registers `(rax rdx rcx rsi rdi r8 r9 r10 r11 rbp rbx r12 r13 r14 r15))
+(define x86-allocatable-registers `(rbx rcx rdx rsi rdi r8 r9 r10 r11 r12 r13 r14 r15))
 (define (build-interference)
   (define (add-interference! g inst live-after)
     (displayln (format "inst: ~a, live-after: ~a" inst live-after))
@@ -66,7 +70,10 @@
                           (not (eq? e dst)))
                         (set->list live-after))])
          (add-edge! g dst x))]
-      [`(call ,f) `()]
+      [`(callq ,f)
+       (for ([caller-reg caller-saved-registers])
+         (for ([x (set->list live-after)])
+           (add-edge! g caller-reg x)))]
       [else `()]))
   (define (add-interference-recur! g ss live-afters)
     (cond [(null? live-afters)
@@ -81,20 +88,18 @@
     (match e
       [`(program (,xs ,live-afters) ,ss ...)
        (let ([g (unweighted-graph/undirected '())])
+         (for ([x xs])
+           (add-vertex! g x))
          (add-interference-recur! g ss live-afters)
          `(program (,xs ,g) ,@ss))])))
 
-(define caller-saved-registers `(rax rdx rcx rsi rdi r8 r9 r10 r11))
-(define callee-saved-registers `(rsp rbp rbx r12 r13 r14 r15))
-(define x86-registers `(rax rdx rcx rsi rdi r8 r9 r10 r11 rbp rbx r12 r13 r14 r15))
-(define x86-allocatable-registers `(rbx rcx rdx rsi rdi r8 r9 r10 r11 r12 r13 r14 r15))
 (define (get-location color)
   (if (< color (length x86-allocatable-registers))
       `(reg ,(list-ref x86-allocatable-registers color))
       `(deref rbp ,(- (+ 8 (* 8 color))))))
 
 ;;; TODO: (cycloidz) stack slot allocation.
-(define (allocate-regsiters)
+(define (allocate-registers)
   (define (get-saturation v g assignment)
     (cond [(hash-empty? assignment) 0]
           [else
@@ -112,7 +117,8 @@
           [else
            (get-unused-color-recursive unused-color (cdr colors))]))
   (define (get-unused-color v g assignment)
-    (cond [(hash-empty? assignment) 0]
+    (cond [(member v x86-allocatable-registers) (index-of x86-allocatable-registers v)]
+          [(hash-empty? assignment) 0]
           [else
            (letrec ([neighbors (get-neighbors g v)]
                     [neighbor-colors (sort
@@ -181,7 +187,7 @@
     (check-true (has-edge? g 'y 'z))
     (check-true (has-edge? g 'z 't.1))
     (check-true (has-edge? g 't.1 't.2))])
- (define allocate-registers-res ((allocate-regsiters) build-graph-res))
+ (define allocate-registers-res ((allocate-registers) build-graph-res))
  (displayln allocate-registers-res))
 
 (test-case
@@ -198,4 +204,9 @@
              (addq (int 42) (var t.2))
              (movq (var t.2) (reg rax))))
  (define uncover-testcase2-res ((uncover-liveness) uncover-testcase2))
- (displayln uncover-testcase2-res))
+ (define build-graph-res ((build-interference) uncover-testcase2-res))
+ (match build-graph-res
+   [`(program (,xs ,g) ,ss ...)
+    (displayln (get-edges g))])
+ (define allocate-registers-res ((allocate-registers) build-graph-res))
+ (displayln allocate-registers-res))
